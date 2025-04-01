@@ -16,7 +16,7 @@ impl BufferFrame {
     /// Create a new buffer frame
     pub fn new(page_id: PageID, page_size: usize) -> Self {
         Self {
-            page_id,
+            page_id: page_id,
             data: vec![0; page_size],
             is_dirty: false,
             pin_count: 0,

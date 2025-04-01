@@ -171,7 +171,7 @@ impl LogManager {
         Ok(())
     }
     
-    pub fn log_checkpoint(&mut self, buffer_manager: &BufferManager) -> Result<()> {
+    pub fn log_checkpoint(&mut self, _buffer_manager: &BufferManager) -> Result<()> {
         // Encode record type
         let record_type = [LogRecordType::CheckpointRecord as u8];
         self.write_to_log(&record_type)?;
