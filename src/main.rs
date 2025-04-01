@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_path = Path::new("temp_log.dat");
     
     // Initialize components
-    let mut buffer_manager = BufferManager::new(4096, 100);
+    let buffer_manager = BufferManager::new(4096, 100);
     let log_manager = LogManager::new(log_path)?;
     let mut txn_manager = TransactionManager::new(log_manager, buffer_manager);
     
