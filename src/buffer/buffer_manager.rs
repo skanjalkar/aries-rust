@@ -61,6 +61,11 @@ impl BufferFrame {
     pub fn pin_count(&self) -> u32 {
         self.pin_count
     }
+    
+    /// Get the page ID of this frame
+    pub fn get_page_id(&self) -> PageID {
+        self.page_id
+    }
 }
     
 /// The buffer manager is responsible for managing pages in memory

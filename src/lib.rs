@@ -41,10 +41,30 @@ impl Database {
             transaction_manager,
         })
     }
+    
+    pub fn begin_transaction(&mut self) -> Result<TransactionID> {
+        self.transaction_manager.start_txn()
+    }
+
+    pub fn commit_transaction(&mut self, txn_id: TransactionID) -> Result<()> {
+        self.transaction_manager.commit_txn(txn_id)
+    }
+
+    pub fn get_log_manager(&self) -> Arc<Mutex<LogManager>> {
+        Arc::clone(&self.log_manager)
+    }
+
+    pub fn cleanup(&self) -> Result<()> {
+        self.files.cleanup()
+    }
 
     pub fn close(&mut self) -> Result<()> {
-        // Get mutable access through Mutex
+        // Flush buffer pool
         self.buffer_manager.lock().unwrap().flush_all_pages()?;
+        
+        // Cleanup files
+        self.files.cleanup()?;
+        
         Ok(())
     }
 }
