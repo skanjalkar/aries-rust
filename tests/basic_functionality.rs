@@ -3,9 +3,10 @@ use aries_rust::{
     log_mod::LogManager,
     transaction::TransactionManager,
     storage::{MemoryFile, FileMode, File},
-    common::PageID,
+    common::Result,
 };
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn test_file_operations() {
@@ -22,21 +23,25 @@ fn test_file_operations() {
 }
 
 #[test]
-fn test_transaction_lifecycle() {
+fn test_transaction_lifecycle() -> Result<()> {
     // Create temporary log file
     let log_path = Path::new("test_log.dat");
     
-    // Set up necessary components
-    let mut buffer_manager = BufferManager::new(4096, 10);
-    let log_manager = LogManager::new(log_path).unwrap();
-    let mut txn_manager = TransactionManager::new(log_manager, buffer_manager);
+    let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 10)));
+    let log_manager = Arc::new(Mutex::new(LogManager::new(log_path)?));
+    let mut txn_manager = TransactionManager::new(
+        Arc::clone(&log_manager),
+        Arc::clone(&buffer_manager)
+    );
     
     // Start a transaction
-    let txn_id = txn_manager.start_txn().unwrap();
+    let txn_id = txn_manager.start_txn()?;
     
     // Commit it
-    txn_manager.commit_txn(txn_id).unwrap();
+    txn_manager.commit_txn(txn_id)?;
     
-    // Clean up
-    std::fs::remove_file(log_path).ok();
+    if log_path.exists() {
+        std::fs::remove_file(log_path)?;
+    }
+    Ok(())
 }

@@ -12,42 +12,27 @@ pub use transaction::TransactionManager;
 pub use storage::DBFiles;
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub struct Database {
     files: DBFiles,
-    buffer_manager: BufferManager,
-    log_manager: LogManager,
+    buffer_manager: Arc<Mutex<BufferManager>>,
+    log_manager: Arc<Mutex<LogManager>>,
     transaction_manager: TransactionManager,
 }
 
 impl Database {
     pub fn new(db_path: &Path) -> Result<Self> {
-        // Initialize database files
         let files = DBFiles::new(db_path)?;
         
-        // Initialize components with actual files
-        let buffer_manager = BufferManager::new(4096, 1000);
-        let log_manager = LogManager::new(&files.get_log_file_path())?;
-        let transaction_manager = TransactionManager::new(log_manager, buffer_manager);
-
-        Ok(Self {
-            files,
-            buffer_manager,
-            log_manager,
-            transaction_manager,
-        })
-    }
-
-    pub fn open_database(db_path: &Path) -> Result<Self> {
-        if !db_path.exists() {
-            return Self::new(db_path);
-        }
+        let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 1000)));
+        let log_manager = Arc::new(Mutex::new(LogManager::new(&files.get_log_file_path())?));
         
-        // Initialize with existing files
-        let files = DBFiles::new(db_path)?;
-        let buffer_manager = BufferManager::new(4096, 1000);
-        let log_manager = LogManager::new(&files.get_log_file_path())?;
-        let transaction_manager = TransactionManager::new(log_manager, buffer_manager);
+        let transaction_manager = TransactionManager::new(
+            Arc::clone(&log_manager),
+            Arc::clone(&buffer_manager)
+        );
 
         Ok(Self {
             files,
@@ -58,8 +43,8 @@ impl Database {
     }
 
     pub fn close(&mut self) -> Result<()> {
-        // Flush all changes and close files
-        self.buffer_manager.flush_all_pages()?;
+        // Get mutable access through Mutex
+        self.buffer_manager.lock().unwrap().flush_all_pages()?;
         Ok(())
     }
 }

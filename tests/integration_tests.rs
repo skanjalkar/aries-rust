@@ -5,15 +5,18 @@ use aries_rust::{
     common::{PageID, Result},
 };
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn test_complete_workflow() -> Result<()> {
     // Set up components
     let log_path = Path::new("test_integration.dat");
-    let buffer_manager = BufferManager::new(4096, 10);
-    let log_manager = LogManager::new(log_path)?;
-    let mut txn_manager = TransactionManager::new(log_manager, buffer_manager);
-    
+    let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 10)));
+    let log_manager = Arc::new(Mutex::new(LogManager::new(log_path)?));
+    let mut txn_manager = TransactionManager::new(
+        Arc::clone(&log_manager),
+        Arc::clone(&buffer_manager)
+    );
     // Start a transaction
     let txn_id = txn_manager.start_txn()?;
     

@@ -4,6 +4,8 @@ use crate::common::{TransactionID, PageID, Result, BuzzDBError};
 use crate::log_mod::LogManager;
 use crate::buffer::BufferManager;
 
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug)]
 pub struct Transaction {
     pub id: TransactionID,
@@ -39,12 +41,15 @@ pub struct TransactionManager {
     next_txn_id: u64,
     active_transactions: HashMap<TransactionID, Transaction>,
     page_locks: HashMap<PageID, TransactionID>,  // Track which transaction holds each page lock
-    log_manager: LogManager,
-    buffer_manager: BufferManager,
+    log_manager: Arc<Mutex<LogManager>>,
+    buffer_manager: Arc<Mutex<BufferManager>>,
 }
 
 impl TransactionManager {
-    pub fn new(log_manager: LogManager, buffer_manager: BufferManager) -> Self {
+    pub fn new(
+        log_manager: Arc<Mutex<LogManager>>, 
+        buffer_manager: Arc<Mutex<BufferManager>>
+    ) -> Self {
         Self {
             next_txn_id: 0,
             active_transactions: HashMap::new(),
@@ -61,24 +66,26 @@ impl TransactionManager {
         let txn = Transaction::new(txn_id);
         self.active_transactions.insert(txn_id, txn);
         
-        self.log_manager.log_txn_begin(txn_id)?;
+        self.log_manager.lock().unwrap().log_txn_begin(txn_id)?;
         
         Ok(txn_id)
     }
 
     pub fn commit_txn(&mut self, txn_id: TransactionID) -> Result<()> {
         if let Some(txn) = self.active_transactions.remove(&txn_id) {
+            let mut buffer_manager = self.buffer_manager.lock().unwrap();
+            
             // Flush all modified pages
             for page_id in &txn.modified_pages {
-                self.buffer_manager.flush_page(*page_id)?;
+                buffer_manager.flush_page(*page_id)?;
             }
             
-            // Release all locks held by this transaction
+            // Release locks
             for page_id in &txn.locked_pages {
                 self.page_locks.remove(page_id);
             }
             
-            self.log_manager.log_commit(txn_id)?;
+            self.log_manager.lock().unwrap().log_commit(txn_id)?;
         } else {
             return Err(BuzzDBError::Other(format!("Transaction {} not found", txn_id.0)));
         }
@@ -88,24 +95,27 @@ impl TransactionManager {
 
     pub fn abort_txn(&mut self, txn_id: TransactionID) -> Result<()> {
         if let Some(txn) = self.active_transactions.remove(&txn_id) {
-            // Discard all modified pages
+            let mut buffer_manager = self.buffer_manager.lock().unwrap();
+            let mut log_manager = self.log_manager.lock().unwrap();
+            
+            // Discard modified pages
             for page_id in &txn.modified_pages {
-                self.buffer_manager.discard_page(*page_id)?;
+                buffer_manager.discard_page(*page_id)?;
             }
             
-            // Release all locks held by this transaction
+            // Release locks
             for page_id in &txn.locked_pages {
                 self.page_locks.remove(page_id);
             }
             
-            self.log_manager.log_abort(txn_id, &mut self.buffer_manager)?;
+            log_manager.log_abort(txn_id, &mut buffer_manager)?;
         } else {
             return Err(BuzzDBError::Other(format!("Transaction {} not found", txn_id.0)));
         }
         
         Ok(())
     }
-
+    
     pub fn add_modified_page(&mut self, txn_id: TransactionID, page_id: PageID) -> Result<()> {
         // First check if the page is already locked by another transaction
         if let Some(&lock_holder) = self.page_locks.get(&page_id) {
@@ -128,15 +138,5 @@ impl TransactionManager {
         } else {
             Err(BuzzDBError::Other(format!("Transaction {} not found", txn_id.0)))
         }
-    }
-
-    // Helper method to check if a page is locked by a transaction
-    pub fn is_page_locked(&self, page_id: PageID) -> bool {
-        self.page_locks.contains_key(&page_id)
-    }
-
-    // Helper method to get the transaction that holds a lock on a page
-    pub fn get_page_lock_holder(&self, page_id: PageID) -> Option<TransactionID> {
-        self.page_locks.get(&page_id).copied()
     }
 }

@@ -1,6 +1,7 @@
 use log::{info, LevelFilter};
 use env_logger::Builder;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use aries_rust::{
     buffer::BufferManager,
@@ -20,11 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create temporary paths for our files
     let log_path = Path::new("temp_log.dat");
     
-    // Initialize components
-    let buffer_manager = BufferManager::new(4096, 100);
-    let log_manager = LogManager::new(log_path)?;
-    let mut txn_manager = TransactionManager::new(log_manager, buffer_manager);
-    
+    let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 100)));
+    let log_manager = Arc::new(Mutex::new(LogManager::new(log_path)?));
+    let mut txn_manager = TransactionManager::new(
+        Arc::clone(&log_manager),
+        Arc::clone(&buffer_manager)
+    );
     // Start a transaction
     let txn_id = txn_manager.start_txn()?;
     info!("Started transaction {}", txn_id.0);
