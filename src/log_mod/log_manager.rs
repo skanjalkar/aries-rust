@@ -5,7 +5,6 @@ use std::path::Path;
 use std::hash::Hash;
 use std::sync::Arc;
 
-#[allow(unused_imports)]
 use crate::common::{BuzzDBError, Result, LSN, PageID, TransactionID};
 use crate::buffer::BufferManager;
 
