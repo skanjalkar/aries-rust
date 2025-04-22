@@ -5,7 +5,7 @@ use std::path::Path;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use crate::common::{BuzzDBError, Result, LSN, PageID, TransactionID};
+use crate::common::{BuzzDBError, Result, PageID, TransactionID};
 use crate::buffer::BufferManager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]  // Add Hash trait here

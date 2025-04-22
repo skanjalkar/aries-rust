@@ -1,5 +1,5 @@
 use aries_rust::{
-    buffer::{BufferManager, BufferFrame},
+    buffer::BufferManager,
     common::{PageID, Result},
 };
 

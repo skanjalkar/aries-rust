@@ -7,7 +7,6 @@ use aries_rust::{
     buffer::BufferManager,
     log_mod::LogManager,
     transaction::TransactionManager,
-    common::PageID,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

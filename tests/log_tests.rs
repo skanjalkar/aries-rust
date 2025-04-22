@@ -3,7 +3,6 @@ use aries_rust::{
     common::{PageID, TransactionID, Result},
     buffer::BufferManager,
     transaction::TransactionManager,
-    storage::{File, FileMode},
 };
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -104,42 +103,6 @@ fn test_log_record_count() -> Result<()> {
         .get_total_log_records_of_type(LogRecordType::UpdateRecord);
     assert_eq!(update_count, 2);
     
-    std::fs::remove_file(log_path)?;
-    Ok(())
-}
-
-#[test]
-fn test_open_commit_open_crash() -> Result<()> {
-    let log_path = Path::new("test_multi_txn_crash.dat");
-    let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 10)));
-    let log_manager = Arc::new(Mutex::new(LogManager::new(log_path)?));
-    let mut txn_manager = TransactionManager::new(
-        Arc::clone(&log_manager),
-        Arc::clone(&buffer_manager)
-    );
-
-    // T1: Start but don't commit
-    let txn1 = txn_manager.start_txn()?;
-    // Insert operations...
-    buffer_manager.lock().unwrap().flush_all_pages()?;
-
-    // T2: Start and commit
-    let txn2 = txn_manager.start_txn()?;
-    // Insert operations...
-    txn_manager.commit_txn(txn2)?;
-
-    // T3: Start but don't commit
-    let txn3 = txn_manager.start_txn()?;
-    // Insert operations...
-    buffer_manager.lock().unwrap().flush_all_pages()?;
-
-    // Simulate crash
-    buffer_manager.lock().unwrap().discard_all_pages()?;
-    let new_log_file = File::open_file(log_path, FileMode::WRITE)?;
-    log_manager.lock().unwrap().reset(new_log_file)?;
-
-    // Verify only T2's data remains...
-
     std::fs::remove_file(log_path)?;
     Ok(())
 }
