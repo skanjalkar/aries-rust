@@ -79,15 +79,11 @@ cargo test recovery_tests
 
 ## Performance Notes
 
-This isn't meant to compete with PostgreSQL or MySQL (yet!). It's an educational implementation that prioritizes:
+This isn't meant to compete with PostgreSQL or MySQL -- this is more for my learning :D. It's an educational implementation that prioritizes:
 1. **Correctness** over raw performance
 2. **Readability** over clever optimizations
 3. **Learning** over production use
 
-That said, it's still reasonably fast:
-- Transaction operations: ~0.1-0.5ms
-- Buffer operations: ~0.1-0.4ms
-- Recovery: ~1-2ms per phase
 
 ## Learning Resources
 
