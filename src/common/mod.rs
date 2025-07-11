@@ -1,5 +1,5 @@
-mod error;  // Add this line to declare the error submodule
-pub use error::*;  // Add this line to re-export everything from error
+mod error;
+pub use error::*;
 
 mod tid;
 pub use tid::TID;

@@ -1,10 +1,10 @@
-use serde::{Serialize, Deserialize};
-use crate::common::{PageID, RecordID, BuzzDBError, Result};
+use crate::common::{BuzzDBError, PageID, RecordID, Result};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SlottedPage {
     pub page_id: PageID,
-    pub slots: Vec<Option<RecordID>>, // Each slot can hold a record ID or be empty
+    pub slots: Vec<Option<RecordID>>, // Fixed-size array of record slots
 }
 
 impl SlottedPage {
@@ -16,20 +16,21 @@ impl SlottedPage {
     }
 
     pub fn allocate_slot(&mut self, record_id: RecordID) -> Option<usize> {
+        // Linear search for first empty slot - not great for performance but simple
         for (index, slot) in self.slots.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(record_id);
                 return Some(index);
             }
         }
-        None // No empty slot available
+        None // Page is full
     }
 
     pub fn deallocate_slot(&mut self, slot_index: usize) -> Result<()> {
         if slot_index >= self.slots.len() {
             return Err(BuzzDBError::InvalidSlotIndex(slot_index));
         }
-        self.slots[slot_index] = None;
+        self.slots[slot_index] = None; // Mark slot as free
         Ok(())
     }
 
@@ -37,7 +38,7 @@ impl SlottedPage {
         if slot_index >= self.slots.len() {
             return Err(BuzzDBError::InvalidSlotIndex(slot_index));
         }
-        
+
         match self.slots[slot_index] {
             Some(record_id) => Ok(record_id),
             None => Err(BuzzDBError::EmptySlot(slot_index)),
@@ -45,6 +46,7 @@ impl SlottedPage {
     }
 
     pub fn serialize(&self) -> Vec<u8> {
+        // Using bincode for now - might want to switch to a more compact format later
         bincode::serialize(self).expect("Serialization failed")
     }
 

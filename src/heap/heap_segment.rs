@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::time::Instant;
 
-use crate::common::{BuzzDBError, PageID, RecordID, TransactionID, Result};
+use crate::common::{BuzzDBError, PageID, RecordID, Result, TransactionID};
 use crate::storage::SlottedPage;
 
 #[derive(Debug)]
@@ -12,22 +12,27 @@ struct PageInfo {
     page: SlottedPage,
     is_dirty: bool,
     last_accessed: Instant,
-    modifying_txn: Option<TransactionID>,
+    modifying_txn: Option<TransactionID>, // Track which transaction is currently modifying this page
 }
 
 pub struct HeapSegment {
     file: File,
     page_size: usize,
     num_slots_per_page: usize,
-    pages: HashMap<PageID, PageInfo>,
-    page_access_order: VecDeque<PageID>,
+    pages: HashMap<PageID, PageInfo>,    // In-memory page cache
+    page_access_order: VecDeque<PageID>, // LRU tracking
     max_pages_in_memory: usize,
     next_page_id: u64,
-    dirty_pages: HashSet<PageID>,
+    dirty_pages: HashSet<PageID>, // Pages that need to be written to disk
 }
 
 impl HeapSegment {
-    pub fn new(file_path: &Path, page_size: usize, num_slots_per_page: usize, max_pages_in_memory: usize) -> Result<Self> {
+    pub fn new(
+        file_path: &Path,
+        page_size: usize,
+        num_slots_per_page: usize,
+        max_pages_in_memory: usize,
+    ) -> Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -52,20 +57,23 @@ impl HeapSegment {
         self.next_page_id += 1;
 
         let new_page = SlottedPage::new(page_id, self.num_slots_per_page);
-        
-        // Write the new page to disk first
+
+        // Write the new page to disk first (crash safety)
         let serialized = new_page.serialize();
         if serialized.len() > self.page_size {
-            return Err(BuzzDBError::PageSizeExceeded(serialized.len(), self.page_size));
+            return Err(BuzzDBError::PageSizeExceeded(
+                serialized.len(),
+                self.page_size,
+            ));
         }
-        
+
         let offset = page_id.0 as u64 * self.page_size as u64;
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(&serialized)?;
-        
+
         // Add to in-memory cache
         self.cache_page(page_id, new_page, txn_id)?;
-        
+
         Ok(page_id)
     }
 
@@ -75,36 +83,49 @@ impl HeapSegment {
         Ok(&self.pages.get(&page_id).unwrap().page)
     }
 
-    pub fn get_page_mut(&mut self, page_id: PageID, txn_id: TransactionID) -> Result<&mut SlottedPage> {
+    pub fn get_page_mut(
+        &mut self,
+        page_id: PageID,
+        txn_id: TransactionID,
+    ) -> Result<&mut SlottedPage> {
         self.ensure_page_loaded(page_id)?;
-        
-        // Check if another transaction is modifying this page
+
+        // Check for conflicting transactions (simple locking mechanism)
         if let Some(modifying_txn) = self.pages.get(&page_id).unwrap().modifying_txn {
             if modifying_txn != txn_id {
                 return Err(BuzzDBError::Other(format!(
                     "Page {} is being modified by transaction {}",
-                    page_id.0,
-                    modifying_txn.0
+                    page_id.0, modifying_txn.0
                 )));
             }
         }
 
         self.update_page_access(page_id);
         self.mark_page_dirty(page_id, txn_id);
-        
+
         Ok(&mut self.pages.get_mut(&page_id).unwrap().page)
     }
 
-    pub fn insert_record(&mut self, page_id: PageID, record_id: RecordID, txn_id: TransactionID) -> Result<usize> {
+    pub fn insert_record(
+        &mut self,
+        page_id: PageID,
+        record_id: RecordID,
+        txn_id: TransactionID,
+    ) -> Result<usize> {
         let page = self.get_page_mut(page_id, txn_id)?;
-        
+
         match page.allocate_slot(record_id) {
             Some(slot_index) => Ok(slot_index),
             None => Err(BuzzDBError::PageFull(page_id.0)),
         }
     }
 
-    pub fn delete_record(&mut self, page_id: PageID, slot_index: usize, txn_id: TransactionID) -> Result<()> {
+    pub fn delete_record(
+        &mut self,
+        page_id: PageID,
+        slot_index: usize,
+        txn_id: TransactionID,
+    ) -> Result<()> {
         let page = self.get_page_mut(page_id, txn_id)?;
         page.deallocate_slot(slot_index)
     }
@@ -115,9 +136,9 @@ impl HeapSegment {
     }
 
     pub fn commit_transaction(&mut self, txn_id: TransactionID) -> Result<()> {
-        // First collect all pages that need to be written
         let mut pages_to_write = Vec::new();
-        
+
+        // Collect all pages modified by this transaction
         for (&page_id, info) in self.pages.iter() {
             if info.modifying_txn == Some(txn_id) {
                 let serialized = info.page.serialize();
@@ -125,17 +146,18 @@ impl HeapSegment {
             }
         }
 
-        // Then write them to disk
         for (page_id, serialized) in pages_to_write {
             if serialized.len() > self.page_size {
-                return Err(BuzzDBError::PageSizeExceeded(serialized.len(), self.page_size));
+                return Err(BuzzDBError::PageSizeExceeded(
+                    serialized.len(),
+                    self.page_size,
+                ));
             }
 
             let offset = page_id.0 as u64 * self.page_size as u64;
             self.file.seek(SeekFrom::Start(offset))?;
             self.file.write_all(&serialized)?;
 
-            // Update page info
             if let Some(info) = self.pages.get_mut(&page_id) {
                 info.modifying_txn = None;
                 info.is_dirty = false;
@@ -148,14 +170,14 @@ impl HeapSegment {
     }
 
     pub fn abort_transaction(&mut self, txn_id: TransactionID) -> Result<()> {
-        // Find all pages modified by this transaction
-        let modified_pages: Vec<PageID> = self.pages
+        let modified_pages: Vec<PageID> = self
+            .pages
             .iter()
             .filter(|(_, info)| info.modifying_txn == Some(txn_id))
             .map(|(&page_id, _)| page_id)
             .collect();
 
-        // Reload these pages from disk to undo changes
+        // Simple rollback: just reload from disk to discard changes
         for page_id in modified_pages {
             self.pages.remove(&page_id);
             self.ensure_page_loaded(page_id)?;
@@ -165,9 +187,8 @@ impl HeapSegment {
     }
 
     pub fn flush(&mut self) -> Result<()> {
-        // First collect all dirty pages and their serialized data
         let mut pages_to_write = Vec::new();
-        
+
         for &page_id in &self.dirty_pages {
             if let Some(info) = self.pages.get(&page_id) {
                 let serialized = info.page.serialize();
@@ -175,17 +196,18 @@ impl HeapSegment {
             }
         }
 
-        // Then write them to disk
         for (page_id, serialized) in pages_to_write {
             if serialized.len() > self.page_size {
-                return Err(BuzzDBError::PageSizeExceeded(serialized.len(), self.page_size));
+                return Err(BuzzDBError::PageSizeExceeded(
+                    serialized.len(),
+                    self.page_size,
+                ));
             }
 
             let offset = page_id.0 as u64 * self.page_size as u64;
             self.file.seek(SeekFrom::Start(offset))?;
             self.file.write_all(&serialized)?;
 
-            // Update page info
             if let Some(info) = self.pages.get_mut(&page_id) {
                 info.is_dirty = false;
             }
@@ -196,7 +218,6 @@ impl HeapSegment {
         Ok(())
     }
 
-    // Private helper methods
     fn read_page_from_disk(&mut self, page_id: PageID) -> Result<SlottedPage> {
         let offset = page_id.0 as u64 * self.page_size as u64;
         let mut buffer = vec![0; self.page_size];
@@ -213,12 +234,10 @@ impl HeapSegment {
 
     fn ensure_page_loaded(&mut self, page_id: PageID) -> Result<()> {
         if !self.pages.contains_key(&page_id) {
-            // Evict page if necessary
             if self.pages.len() >= self.max_pages_in_memory {
                 self.evict_page()?;
             }
 
-            // Load page from disk
             let page = self.read_page_from_disk(page_id)?;
             let page_info = PageInfo {
                 page,
@@ -226,7 +245,7 @@ impl HeapSegment {
                 last_accessed: Instant::now(),
                 modifying_txn: None,
             };
-            
+
             self.pages.insert(page_id, page_info);
             self.page_access_order.push_back(page_id);
         }
@@ -237,8 +256,7 @@ impl HeapSegment {
         if let Some(info) = self.pages.get_mut(&page_id) {
             info.last_accessed = Instant::now();
         }
-        
-        // Update LRU order
+
         if let Some(pos) = self.page_access_order.iter().position(|&p| p == page_id) {
             self.page_access_order.remove(pos);
             self.page_access_order.push_back(page_id);
@@ -255,13 +273,13 @@ impl HeapSegment {
 
     fn evict_page(&mut self) -> Result<()> {
         while let Some(page_id) = self.page_access_order.pop_front() {
-            // Don't evict dirty pages
+            // Can't evict dirty pages - they need to be written first
             if self.dirty_pages.contains(&page_id) {
                 self.page_access_order.push_back(page_id);
                 continue;
             }
 
-            // Don't evict pages being modified by transactions
+            // Can't evict pages that are being modified by active transactions
             if let Some(info) = self.pages.get(&page_id) {
                 if info.modifying_txn.is_some() {
                     self.page_access_order.push_back(page_id);
@@ -269,16 +287,20 @@ impl HeapSegment {
                 }
             }
 
-            // Found a page we can evict
             self.pages.remove(&page_id);
             return Ok(());
         }
 
-        // If we get here, all pages are dirty or being modified
+        // If we get here, everything is dirty or locked - we're stuck
         Err(BuzzDBError::BufferFull)
     }
 
-    fn cache_page(&mut self, page_id: PageID, page: SlottedPage, txn_id: TransactionID) -> Result<()> {
+    fn cache_page(
+        &mut self,
+        page_id: PageID,
+        page: SlottedPage,
+        txn_id: TransactionID,
+    ) -> Result<()> {
         if self.pages.len() >= self.max_pages_in_memory {
             self.evict_page()?;
         }

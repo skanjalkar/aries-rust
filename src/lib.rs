@@ -6,10 +6,10 @@ pub mod storage;
 pub mod transaction;
 
 pub use buffer::BufferManager;
-pub use common::{PageID, TransactionID, Result};
+pub use common::{PageID, Result, TransactionID};
 pub use log_mod::LogManager;
-pub use transaction::TransactionManager;
 pub use storage::DBFiles;
+pub use transaction::TransactionManager;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -25,14 +25,12 @@ pub struct Database {
 impl Database {
     pub fn new(db_path: &Path) -> Result<Self> {
         let files = DBFiles::new(db_path)?;
-        
+
         let buffer_manager = Arc::new(Mutex::new(BufferManager::new(4096, 1000)));
         let log_manager = Arc::new(Mutex::new(LogManager::new(&files.get_log_file_path())?));
-        
-        let transaction_manager = TransactionManager::new(
-            Arc::clone(&log_manager),
-            Arc::clone(&buffer_manager)
-        );
+
+        let transaction_manager =
+            TransactionManager::new(Arc::clone(&log_manager), Arc::clone(&buffer_manager));
 
         Ok(Self {
             files,
@@ -41,7 +39,7 @@ impl Database {
             transaction_manager,
         })
     }
-    
+
     pub fn begin_transaction(&mut self) -> Result<TransactionID> {
         self.transaction_manager.start_txn()
     }
@@ -59,12 +57,8 @@ impl Database {
     }
 
     pub fn close(&mut self) -> Result<()> {
-        // Flush buffer pool
         self.buffer_manager.lock().unwrap().flush_all_pages()?;
-        
-        // Cleanup files
         self.files.cleanup()?;
-        
         Ok(())
     }
 }
