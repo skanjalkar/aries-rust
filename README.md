@@ -91,6 +91,7 @@ If you're new to database internals, check out:
 - [Database Internals](https://www.databass.dev/) by Alex Petrov
 - [Architecture of a Database System](https://dsf.berkeley.edu/papers/fntdb07-architecture.pdf)
 - [The original ARIES paper](https://cs.stanford.edu/people/chrismre/cs345/rl/aries.pdf) (warning: it's dense!)
+- [Rust lang book!](https://doc.rust-lang.org/book/title-page.html)
 
 ## Contributing
 
