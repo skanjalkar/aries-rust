@@ -1,113 +1,118 @@
-# Final Project Report: ARIES Protocol Implementation in Rust
+# ARIES-Rust: A Database Recovery Protocol Implementation
 
-## 1. Goal Progress Assessment
+Ever wondered how databases magically recover from crashes without losing your data? Meet ARIES - the battle-tested algorithm that powers most modern database systems. This project is a Rust implementation of the ARIES recovery protocol, built from the ground up to be safe, fast, and actually understandable.
 
-### Original Goals and Progress
+## What is ARIES?
 
-1. **Core Component Conversion**
-- ✓ Successfully converted buffer management system
-- ✓ Implemented slotted page storage
-- ✓ Developed heap file management
-- ✓ Created transaction management system
+ARIES (Algorithm for Recovery and Isolation Exploiting Semantics) is the recovery protocol used by databases like IBM DB2, Microsoft SQL Server, and many others. It's the reason your database can crash mid-transaction and still wake up with all your data intact. Pretty neat, right?
 
-2. **ARIES Protocol Implementation**
-- ✓ Implemented log manager with record types
-- ✓ Completed analysis, redo, and undo phases
-- ✓ Integrated logging with transaction management
-- ✓ Implemented crash recovery mechanisms
+This implementation focuses on three core principles:
+- **Write-Ahead Logging**: All changes are logged before they hit the disk
+- **Repeating History**: During recovery, we replay exactly what happened
+- **Logging Changes**: Even during recovery, we log what we're doing
 
-3. **Rust Safety Features Utilization**
-- ✓ Used Arc<Mutex<>> for thread-safe shared access
-- ✓ Implemented custom error types with thiserror
-- ✓ Leveraged Rust's ownership system for resource management
+## Why Rust?
 
-## 2. Testing Implementation Correctness
+Good question! First reason is that I wanted to play with Rust. While most database implementations are in C or C++, Rust gives us:
+- **Memory safety** without garbage collection overhead
+- **Fearless concurrency** - perfect for database workloads
+- **Zero-cost abstractions** - performance without sacrificing readability
+- **Excellent error handling** - databases can't just panic and call it a day
 
-### Unit Testing
-- Implemented comprehensive test suite in `/tests` directory
-- Key test categories:
-  - Buffer management (buffer_tests.rs)
-  - File operations (file_tests.rs)
-  - Transaction management (txn_tests.rs)
-  - Log operations (log_tests.rs)
+This project is inspired from BuzzDB, used in Georgia Techs DB Lab.
 
-### Integration Testing
-- Created integration_tests.rs for system-wide testing
-- Test scenarios include:
-  - Complete transaction workflows
-  - Concurrent transaction handling
-  - Crash recovery scenarios
-  - Buffer pool management
+## Project Structure
 
-### Recovery Testing
-- Implemented specific tests for ARIES recovery:
-  - Analysis phase verification
-  - Redo operation correctness
-  - Undo operation verification
-  - Transaction abort handling
-
-## 3. Experimental Results
-
-### Performance Metrics
-1. Transaction Processing
 ```
-Basic Transaction Operations:
-- Begin Transaction: ~0.1ms
-- Commit Transaction: ~0.5ms
-- Abort Transaction: ~0.3ms
+src/
+├── buffer/         # Buffer pool management (pages in memory)
+├── common/         # Shared types and error handling
+├── heap/           # Heap file management (where data lives)
+├── log_mod/        # Write-ahead logging implementation
+├── storage/        # Slotted page storage format
+└── transaction/    # Transaction management and ACID guarantees
 ```
 
-2. Buffer Management
+## Getting Started
+
+### Prerequisites
+
+- Rust 1.70 or later
+- Basic understanding of databases (helpful but not required)
+
+### Building
+
+```bash
+git clone https://github.com/skanjalkar3/aries-rust
+cd aries-rust
+cargo build --release
 ```
-Buffer Pool Operations:
-- Page Fix: ~0.2ms
-- Page Unfix: ~0.1ms
-- Page Flush: ~0.4ms
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test modules
+cargo test buffer_tests
+cargo test recovery_tests
 ```
 
-3. Recovery Performance
-```
-Recovery Components:
-- Analysis Phase: ~1.2ms
-- Redo Phase: ~2.0ms
-- Undo Phase: ~1.8ms
-```
+## Key Features
 
-### Concurrency Testing
-- Successfully handled multiple concurrent transactions
-- Demonstrated proper isolation between transactions
-- Verified lock management effectiveness
+### ✅ What's Working
 
-## 4. Future Work
+- **Buffer Management**: Efficient page caching with LRU replacement
+- **Slotted Page Storage**: Variable-length record storage
+- **Transaction Management**: ACID properties with proper isolation
+- **Write-Ahead Logging**: All modifications are logged first
+- **Crash Recovery**: Full ARIES recovery with Analysis, Redo, and Undo phases
 
-### Immediate Improvements
-1. **Performance Optimization**
-- Implement more sophisticated buffer replacement policies
-- Optimize log record format for space efficiency
-- Add batch processing capabilities
+### 🚧 What's Next
 
-2. **Feature Additions**
-- Implement savepoints for partial rollback
-- Add checkpoint optimization
-- Develop recovery performance metrics
+- **Performance Optimization**: Better buffer replacement policies
+- **Concurrency**: More sophisticated locking mechanisms
+- **Monitoring**: Performance metrics and debugging tools
+- **Documentation**: More examples and tutorials
 
-3. **Testing Enhancements**
-- Add stress testing for concurrent operations
-- Implement systematic crash testing
-- Create performance benchmarking suite
 
-### Long-term Goals
-1. **Scalability**
-- Implement distributed transaction support
-- Add parallel recovery capabilities
-- Develop sharding mechanisms
+## Performance Notes
 
-2. **Usability**
-- Create comprehensive documentation
-- Develop example applications
-- Add configuration management
+This isn't meant to compete with PostgreSQL or MySQL (yet!). It's an educational implementation that prioritizes:
+1. **Correctness** over raw performance
+2. **Readability** over clever optimizations
+3. **Learning** over production use
 
-3. **Monitoring**
-- Implement performance monitoring
-- Add detailed logging and debugging tools
-- Create administrative interfaces
+That said, it's still reasonably fast:
+- Transaction operations: ~0.1-0.5ms
+- Buffer operations: ~0.1-0.4ms
+- Recovery: ~1-2ms per phase
+
+## Learning Resources
+
+If you're new to database internals, check out:
+- [Database Internals](https://www.databass.dev/) by Alex Petrov
+- [Architecture of a Database System](https://dsf.berkeley.edu/papers/fntdb07-architecture.pdf)
+- [The original ARIES paper](https://cs.stanford.edu/people/chrismre/cs345/rl/aries.pdf) (warning: it's dense!)
+
+## Contributing
+
+Found a bug? Want to add a feature? Great! This project is very much a work in progress. Please:
+
+1. Check the existing issues
+2. Write tests for your changes
+3. Keep the code readable (we're learning here!)
+4. Update documentation as needed
+
+## License
+
+MIT License - feel free to use this for learning, teaching, or whatever makes you happy.
+
+## Acknowledgments
+
+This project was inspired by the original ARIES paper and countless database textbooks. Special thanks to the Rust community for making systems programming fun again!
+
+---
+
+*"The best way to understand something is to build it from scratch."* - Someone wise, probably
